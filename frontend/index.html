@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Terraform LogViewer</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header>
+    <h1>Terraform LogViewer</h1>
+  </header>
+  <main>
+    <section id="upload-section">
+      <h2>Загрузка файла логов (JSONL)</h2>
+      <form id="upload-form">
+        <input type="file" id="file-input" accept=".log,.txt,.jsonl,.json" required />
+        <button type="submit" class="success">📤 Загрузить</button>
+      </form>
+      <div id="upload-result"></div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <button id="btn-import" class="secondary">📁 Импортировать каталог</button>
+        <small>Каталог: переменная IMPORT_DIR в API (см. docker-compose)</small>
+        <label>Маска <input id="import-pattern" placeholder="*.jsonl" style="width:140px"/> 
+          <span style="color: #9ca3af; font-size: 12px; cursor: help;" title="Примеры масок:
+* - все файлы
+*.json - файлы с расширением .json
+*.log - файлы с расширением .log
+test*.jsonl - файлы начинающиеся с 'test' и имеющие расширение .jsonl
+*plan* - файлы содержащие 'plan' в названии
+
+Маска поддерживает стандартные glob-паттерны Unix.">ℹ️</span>
+        </label>
+        <button id="btn-hide-report" class="secondary" style="display:none">❌ Скрыть отчёт</button>
+      </div>
+      <div id="import-progress" style="margin-top:6px;display:none">
+        <div style="height:8px;background:#0b1220;border:1px solid #374151;border-radius:8px;overflow:hidden">
+          <div id="import-bar" style="height:100%;width:0;background:linear-gradient(90deg,#3b82f6,#06b6d4)"></div>
+        </div>
+        <div id="import-status" style="margin-top:4px;color:#9ca3af"></div>
+        <div id="import-report" style="margin-top:6px;font-size:12px"></div>
+      </div>
+    </section>
+
+    <section id="runs-section">
+      <h2>Запуски</h2>
+<div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+        <button id="refresh-runs" class="success">🔄 Обновить</button>
+        <button id="clear-history" class="danger">🗑️ Очистить историю</button>
+        <label style="margin-left: 8px;">
+          <input type="checkbox" id="only-pinned-files" /> Только закрепленные файлы
+        </label>
+        
+        <!-- Pagination controls for runs -->
+        <div id="runs-pagination" style="display: flex; gap: 4px; align-items: center; margin-left: auto;">
+          <span id="runs-info" style="color: #9ca3af; font-size: 12px; margin-right: 8px;">Страница 1</span>
+          <button id="runs-prev" class="secondary" style="padding: 4px 8px; font-size: 12px;">« Назад</button>
+          <button id="runs-next" class="secondary" style="padding: 4px 8px; font-size: 12px;">Вперед »</button>
+          <label style="margin-left: 8px; color: #9ca3af; font-size: 12px;">
+            Показать:
+            <select id="runs-page-size-top" style="margin-left: 4px; background: #1f2937; color: #e5e7eb; border: 1px solid #374151; padding: 2px 4px;">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <ul id="runs-list"></ul>
+    </section>
+
+    <section id="filters-section">
+      <h2>Фильтры</h2>
+      <div class="filters">
+        <label>tf_req_id <input id="f-req" /></label>
+        <label>resource_type <input id="f-type" /></label>
+        <label>level
+          <select id="f-level">
+            <option value="">—</option>
+            <option>error</option>
+            <option>warn</option>
+            <option>info</option>
+            <option>debug</option>
+          </select>
+        </label>
+        <label>status
+          <select id="f-status">
+            <option value="">—</option>
+            <option value="error">error</option>
+            <option value="malformed">malformed</option>
+            <option value="ok">ok</option>
+          </select>
+        </label>
+        <label>Поиск <input id="f-search" placeholder="текст или JSON" /></label>
+        <label>От <input id="f-from" type="datetime-local" /></label>
+        <label>До <input id="f-to" type="datetime-local" /></label>
+        <button id="apply-filters">🔍 Применить</button>
+      </div>
+    </section>
+
+    <section id="logs-section">
+      <h2>Логи <span id="pinned-groups-indicator" style="font-size: 12px; color: #10b981; margin-left: 8px; font-weight: normal;"></span></h2>
+      <div class="pager">
+        <button id="prev-page">«</button>
+        <span id="page-info"></span>
+        <button id="next-page">»</button>
+        <label style="margin-left:8px">Размер
+          <select id="page-size">
+            <option>10</option>
+            <option>20</option>
+            <option selected>50</option>
+            <option>100</option>
+          </select>
+        </label>
+        <label style="margin-left:8px">
+          <input type="checkbox" id="include-pairs" /> Сцеплять пары
+        </label>
+        <label style="margin-left:8px">По ключу
+          <select id="pair-by">
+            <option value="tf_req_id" selected>tf_req_id</option>
+            <option value="resource">resource</option>
+            <option value="phase">phase</option>
+          </select>
+        </label>
+        <label style="margin-left:8px">
+          <input type="checkbox" id="group-rows" checked /> Группировать
+        </label>
+        <button id="collapse-all" class="secondary" title="Свернуть все">📥 Свернуть все</button>
+        <button id="expand-all" class="secondary" title="Развернуть все">📤 Развернуть все</button>
+        <button id="select-display-groups" class="secondary" title="Выбрать группы для отображения">🔍 Выбор для отображения</button>
+        <button id="select-groups" class="primary" title="Выбрать группы для экспорта">🎯 Выбор для экспорта</button>
+        <label style="margin-left:8px">
+          <input type="checkbox" id="only-pinned" /> Только выбранные группы
+        </label>
+        <button id="export-jsonl" class="secondary">💾 Экспорт JSONL</button>
+      </div>
+      <div class="table-container">
+        <table id="logs-table">
+          <thead>
+            <tr>
+              <th>ts</th>
+              <th>level</th>
+              <th class="hide-mobile">phase</th>
+              <th>req_id</th>
+              <th class="hide-mobile">type</th>
+              <th class="hide-mobile">name</th>
+              <th>message</th>
+              <th>json</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="timeline-section">
+      <h2>Хронология (Гантт)</h2>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <label>Группировка
+          <select id="timeline-group">
+            <option value="tf_req_id">tf_req_id</option>
+            <option value="resource">resource</option>
+            <option value="phase">phase</option>
+          </select>
+        </label>
+        <button id="export-timeline-json" class="secondary">💾 Экспорт JSON</button>
+        <button id="export-timeline-csv" class="secondary">📊 Экспорт CSV</button>
+        <button id="export-timeline-image" class="secondary">🖼️ Скачать PNG</button>
+      </div>
+      <div id="timeline"></div>
+    </section>
+  </main>
+
+  <!-- Модальное окно для выбора групп -->
+  <div id="group-selection-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>🎯 Выбор групп для экспорта</h3>
+        <button id="close-group-modal" class="close-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="group-selection-controls">
+          <div class="group-type-selector">
+            <label>Тип группировки:
+              <select id="modal-pair-by">
+                <option value="tf_req_id">tf_req_id</option>
+                <option value="resource">resource</option>
+                <option value="phase">phase</option>
+              </select>
+            </label>
+            <button id="load-groups" class="primary">🔄 Перезагрузить группы</button>
+          </div>
+          <div class="group-selection-actions">
+            <button id="select-all-groups" class="secondary">✓ Выбрать все</button>
+            <button id="deselect-all-groups" class="secondary">✗ Очистить всё</button>
+            <span id="selected-count">0 выбрано</span>
+          </div>
+        </div>
+        <div id="groups-loading" style="display: none; text-align: center; padding: 20px;">
+          🔄 Загрузка групп...
+        </div>
+        <div id="groups-list" class="groups-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="export-selected-groups" class="warning">📌 Экспорт выбранных</button>
+        <button id="cancel-group-selection" class="secondary">❌ Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно для выбора групп для отображения -->
+  <div id="display-group-selection-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>🔍 Выбор групп для отображения</h3>
+        <button id="close-display-group-modal" class="close-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="group-selection-controls">
+          <div class="group-type-selector">
+            <label>Тип группировки:
+              <select id="display-modal-pair-by">
+                <option value="tf_req_id">tf_req_id</option>
+                <option value="resource">resource</option>
+                <option value="phase">phase</option>
+              </select>
+            </label>
+            <button id="load-display-groups" class="primary">🔄 Перезагрузить группы</button>
+          </div>
+          <div class="group-selection-actions">
+            <button id="select-all-display-groups" class="secondary">✓ Выбрать все</button>
+            <button id="deselect-all-display-groups" class="secondary">✗ Очистить всё</button>
+            <span id="display-selected-count">0 выбрано</span>
+          </div>
+        </div>
+        <div id="display-groups-loading" style="display: none; text-align: center; padding: 20px;">
+          🔄 Загрузка групп...
+        </div>
+        <div id="display-groups-list" class="groups-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="apply-display-group-selection" class="primary">✅ Применить и показать логи</button>
+        <button id="cancel-display-group-selection" class="secondary">❌ Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    // Укажите URL API при необходимости (например, через переменную окружения)
+    // Configure API base URL - works in both Docker and local development
+    window.API_BASE = window.API_BASE || 
+      (window.location.hostname === 'localhost' && window.location.port === '8080' 
+        ? 'http://localhost:8000/api'  // Frontend on 8080, API on 8000
+        : '/api');  // Same-origin (integrated server)
+  </script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+version: "3.9"
+name: hakaton
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: hakaton-api:latest
+    container_name: hakaton-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/storage:/app/backend/storage
+      - ./Terraform Logs:/app/import
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PLUGINS=plugin-example:50051
+      - IMPORT_DIR=/app/import
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: hakaton-web:latest
+    container_name: hakaton-web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+  plugin-example:
+    build:
+      context: .
+      dockerfile: plugins/example/Dockerfile
+    image: hakaton-env:latest
+    container_name: hakaton-env
+    ports:
+      - "50051:50051"
+    restart: unless-stopped
+
+

@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package logviewer;
+
+// Плагины фильтрации/обработки логов. Вызываются пайплайном после парсинга строк
+
+message LogItem {
+  int64 id = 1;
+  int64 run_id = 2;
+  string timestamp = 3; // ISO8601
+  string level = 4;
+  string phase = 5;
+  string tf_req_id = 6;
+  string tf_resource_type = 7;
+  string tf_resource_name = 8;
+  string message = 9;
+  bool is_error = 10;
+  bool is_malformed = 11;
+  string raw_json = 12;
+}
+
+message FilterRequest {
+  repeated LogItem items = 1;
+}
+
+message FilterResponse {
+  repeated LogItem items = 1; // изменённые/отфильтрованные
+}
+
+service LogFilter {
+  rpc Process(FilterRequest) returns (FilterResponse);
+}
+
+
